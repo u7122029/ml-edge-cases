@@ -5,8 +5,6 @@ from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
 from constants import *
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
 
 class ToNumpyArray:
     """
