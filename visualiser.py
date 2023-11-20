@@ -6,7 +6,45 @@ from torchvision.transforms import PILToTensor
 from main import get_dataset
 from constants import *
 import numpy as np; np.random.seed(42)
+import argparse
 
+parser = argparse.ArgumentParser(description="ModelOutput Visualiser")
+parser.add_argument(
+    "--model",
+    required=True,
+    type=str,
+    help="The classifier to run." # TODO: ADD VALID CHOICES
+)
+parser.add_argument("--use-clip",
+                    action=argparse.BooleanOptionalAction)
+parser.add_argument(
+    "--image-noun",
+    required=False,
+    type=str,
+    help="The image noun to use for clip models.",
+    default=None
+)
+parser.add_argument(
+    "--dataset",
+    required=False,
+    default="cifar10-test",
+    help="The name of the dataset that should be used.",
+    choices=["imagenet-val", "cifar10-test"]
+)
+parser.add_argument(
+    "--data-root",
+    required=False,
+    default="C:/ml_datasets",
+    type=str,
+    help="path containing all datasets (training and validation)"
+)
+parser.add_argument(
+    "--results-path",
+    required=False,
+    default="results",
+    type=str,
+    help="The path to store results."
+)
 
 def load_results(dset_name, modelname):
     return torch.load(f"results/{dset_name}/{modelname}.pt")
@@ -69,8 +107,17 @@ def generate_plot(dset, indices, top3preds, top3confs, labels_text):
 
 
 if __name__ == "__main__":
-    dset, labels_text = get_dataset("CIFAR10", root="C:/ml_datasets", transform=PILToTensor(), train=False)
-    results = load_results("cifar10-test", "mobilenetv2_x1_4")
+    print(DEVICE)
+    args = parser.parse_args()
+    model_name = args.model
+    image_noun = args.image_noun
+    dataset_name, split = args.dataset.split("-")
+    data_root = args.data_root
+    use_clip = args.use_clip
+    results_path = args.results_path
+
+    dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip, visualise=True)
+    results = load_results(f"{dataset_name}-{split}", model_name)
     labels = results["labels"]
     print(labels)
     top3preds = results["top3preds"].to(torch.int16)

@@ -16,6 +16,8 @@ parser.add_argument(
     type=str,
     help="The classifier to run." # TODO: ADD VALID CHOICES
 )
+parser.add_argument("--use-clip",
+                    action=argparse.BooleanOptionalAction)
 parser.add_argument(
     "--image-noun",
     required=False,
@@ -26,7 +28,7 @@ parser.add_argument(
 parser.add_argument(
     "--dataset",
     required=False,
-    default="cifar10",
+    default="cifar10-test",
     help="The name of the dataset that should be used.",
     choices=["imagenet-val", "cifar10-test"]
 )
@@ -46,13 +48,17 @@ parser.add_argument(
 )
 
 
-def get_dataset(dsetname, *args, **kwargs):
-    if dsetname == "CIFAR10":
-        return CIFAR10(*args, **kwargs), CIFAR10_LABELS_TEXT
-    elif dsetname == "IMAGENET":
-        return ImageNet(*args, **kwargs), IMAGENET_LABELS_TEXT
+def get_dataset(dataset_name, split, data_root, use_clip, visualise=False):
+    if dataset_name == "cifar10":
+        transform = PILToTensor() if use_clip or visualise else CIFAR10_TRANSFORM
+        split_map = {"train": True, "test": False}
+        return CIFAR10(root=data_root, train=split_map[split], transform=transform), CIFAR10_LABELS_TEXT
+    elif dataset_name == "imagenet":
+        transform = PILToTensor() if use_clip or visualise else IMAGENET_TRANSFORM
+        return ImageNet(root=data_root, split=split, transform=transform), IMAGENET_LABELS_TEXT
     else:
-        raise Exception(f"Invalid dataset name '{dsetname}'.")
+        raise Exception(f"Invalid dataset name '{dataset_name}'.")
+
 
 def a_or_an(word):
     vowels = "aeiouy"
@@ -74,11 +80,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     model_name = args.model
     image_noun = args.image_noun
-    dataset_name = args.dataset
+    dataset_name, split = args.dataset.split("-")
     data_root = args.data_root
-    dset, labels_text = get_dataset(dataset_name, model_name, data_root) #get_dataset("CIFAR10", root="C:/ml_datasets", transform=CIFAR10_TRANSFORM, train=False)
+    use_clip = args.use_clip
+    results_path = args.results_path
+
+    dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip) #get_dataset("CIFAR10", root="C:/ml_datasets", transform=CIFAR10_TRANSFORM, train=False)
     dataloader = DataLoader(dset, batch_size=64)
-    pipeline = get_pipeline(model_name, "CIFAR10", label_noun=image_noun).to(DEVICE)
+    pipeline = get_pipeline(model_name, dataset_name, use_clip, label_noun=image_noun).to(DEVICE)
 
     file_out = {
         "top3preds": [],
@@ -99,6 +108,6 @@ if __name__ == "__main__":
     file_out["top3confs"] = torch.concat(file_out["top3confs"])
     file_out["labels"] = torch.concat(file_out["labels"]).to(torch.int16)
 
-    out_path = Path("results/cifar10-test")
+    out_path = Path(f"{results_path}/{dataset_name}-{split}")
     out_path.mkdir(parents=True,exist_ok=True)
     torch.save(file_out, str(out_path / f"{model_name}.pt"))

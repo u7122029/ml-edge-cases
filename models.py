@@ -79,12 +79,11 @@ class CLIP_Pipeline(Model_Pipeline):
 
 
 def get_model_cifar10(name):
-    pytorch_cifar_models = set([f"resnet{i}" for i in [20,32,44,56]] + ["mobilenetv2_x1_4"])
+    pytorch_cifar_models = set([f"resnet{i}" for i in [20,32,44,56]] +
+                               ["mobilenetv2_x1_4", "repvgg_a2", "vgg19_bn"])
     if name in pytorch_cifar_models:
         return torch.hub.load("chenyaofo/pytorch-cifar-models", f"cifar10_{name}",
                               pretrained=True, trust_repo=True)
-    elif name == "clip":
-        return CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
     else:
         raise Exception(f"Unknown model {name}.")
 
@@ -105,9 +104,9 @@ def generate_text_lst(classes, image_noun):
 
 
 def get_label_text_lst(dataset, extensions=None, image_noun=None):
-    if dataset == "CIFAR10":
+    if dataset == "cifar10":
         text_lst = CIFAR10_LABELS_TEXT
-    elif dataset == "IMAGENET":
+    elif dataset == "imagenet":
         text_lst = IMAGENET_LABELS_TEXT
     else:
         raise Exception("Unknown dataset.")
@@ -116,19 +115,21 @@ def get_label_text_lst(dataset, extensions=None, image_noun=None):
     return generate_text_lst(text_lst, image_noun)
 
 
-def get_model(name, dataset):
-    if dataset == "CIFAR10":
+def get_model(name, dataset_name, use_clip):
+    if use_clip:
+        return CLIPModel.from_pretrained(f"openai/{name}")
+    elif dataset_name == "cifar10":
         return get_model_cifar10(name)
-    elif dataset == "IMAGENET":
+    elif dataset_name == "imagenet":
         return tvm.get_model(name, weights="DEFAULT")
     else:
         raise Exception("Invalid dataset")
 
 
-def get_pipeline(name, dataset, extensions=None, label_noun=None):
-    model = get_model(name, dataset)
-    if isinstance(model, CLIPModel):
-        label_texts = get_label_text_lst(dataset, extensions, label_noun)
+def get_pipeline(model_name, dataset_name, use_clip, label_noun=None, extensions=None):
+    model = get_model(model_name, dataset_name, use_clip)
+    if use_clip:
+        label_texts = get_label_text_lst(dataset_name, extensions, label_noun)
         return CLIP_Pipeline(model, label_texts)
     else:
         return Classic_Pipeline(model)
