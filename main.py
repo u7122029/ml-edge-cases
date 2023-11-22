@@ -33,6 +33,20 @@ parser.add_argument(
     choices=["imagenet-val", "cifar10-test"]
 )
 parser.add_argument(
+    "--prefix-mod",
+    required=False,
+    type=str,
+    help="The prefix modifier for all labels.",
+    default=""
+)
+parser.add_argument(
+    "--suffix-mod",
+    required=False,
+    type=str,
+    help="The suffix modifier for all labels.",
+    default=""
+)
+parser.add_argument(
     "--data-root",
     required=False,
     default="C:/ml_datasets",
@@ -49,13 +63,14 @@ parser.add_argument(
 
 
 def get_dataset(dataset_name, split, data_root, use_clip, visualise=False):
+    data_root = Path(data_root)
     if dataset_name == "cifar10":
         transform = PILToTensor() if use_clip or visualise else CIFAR10_TRANSFORM
         split_map = {"train": True, "test": False}
-        return CIFAR10(root=data_root, train=split_map[split], transform=transform), CIFAR10_LABELS_TEXT
+        return CIFAR10(root=str(data_root), train=split_map[split], transform=transform), CIFAR10_LABELS_TEXT
     elif dataset_name == "imagenet":
         transform = PILToTensor() if use_clip or visualise else IMAGENET_TRANSFORM
-        return ImageNet(root=data_root, split=split, transform=transform), IMAGENET_LABELS_TEXT
+        return ImageNet(root=str(data_root / "imagenet"), split=split, transform=transform), IMAGENET_LABELS_TEXT
     else:
         raise Exception(f"Invalid dataset name '{dataset_name}'.")
 
@@ -75,6 +90,12 @@ def generate_text_lst(classes, image_noun):
     return out
 
 
+def id(x):
+    batch = [a[0] for a in x]
+    labels = torch.Tensor([a[1] for a in x])
+    return batch, labels
+
+
 if __name__ == "__main__":
     print(DEVICE)
     args = parser.parse_args()
@@ -83,11 +104,14 @@ if __name__ == "__main__":
     dataset_name, split = args.dataset.split("-")
     data_root = args.data_root
     use_clip = args.use_clip
+    prefix_mod = args.prefix_mod
+    suffix_mod = args.suffix_mod
     results_path = args.results_path
 
     dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip) #get_dataset("CIFAR10", root="C:/ml_datasets", transform=CIFAR10_TRANSFORM, train=False)
-    dataloader = DataLoader(dset, batch_size=64)
-    pipeline = get_pipeline(model_name, dataset_name, use_clip, label_noun=image_noun).to(DEVICE)
+    dataloader = DataLoader(dset, batch_size=64, collate_fn=None if not use_clip else id)
+    pipeline = get_pipeline(model_name, dataset_name, use_clip, label_noun=image_noun,
+                            prefix_mod=prefix_mod, suffix_mod=suffix_mod).to(DEVICE)
 
     file_out = {
         "top3preds": [],
@@ -110,4 +134,7 @@ if __name__ == "__main__":
 
     out_path = Path(f"{results_path}/{dataset_name}-{split}")
     out_path.mkdir(parents=True,exist_ok=True)
-    torch.save(file_out, str(out_path / f"{model_name}.pt"))
+    noun_repr = f"_{image_noun}" if image_noun and use_clip else ""
+    pfmod_repr = f"_{prefix_mod}" if prefix_mod and use_clip else ""
+    sfmod_repr = f"_{suffix_mod}" if suffix_mod and use_clip else ""
+    torch.save(file_out, str(out_path / f"{model_name}{noun_repr}{pfmod_repr}{sfmod_repr}.pt"))

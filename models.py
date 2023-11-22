@@ -56,10 +56,11 @@ class Classic_Pipeline(Model_Pipeline):
 
 
 class CLIP_Pipeline(Model_Pipeline):
-    def __init__(self, model, label_texts):
+    def __init__(self, model, label_texts, model_name):
         super().__init__(model)
         self.label_texts = label_texts
-        self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        self.model_name = model_name
+        self.processor = CLIPProcessor.from_pretrained(f"openai/{model_name}")
 
     def process_input(self, images):
         return self.processor(text=self.label_texts, images=images,
@@ -100,18 +101,20 @@ def generate_text_lst(classes, image_noun):
     out = []
     for c in classes:
         out.append(f"{a_or_an(image_noun)} {image_noun} of {a_or_an(c)} {c}")
+    print(f"Sample label: {out[0]}")
     return out
 
 
-def get_label_text_lst(dataset, extensions=None, image_noun=None):
+def get_label_text_lst(dataset, extensions=None, image_noun=None, prefix_mod="", suffix_mod=""):
     if dataset == "cifar10":
-        text_lst = CIFAR10_LABELS_TEXT
+        text_lst = [prefix_mod + x + suffix_mod for x in CIFAR10_LABELS_TEXT]
     elif dataset == "imagenet":
-        text_lst = IMAGENET_LABELS_TEXT
+        text_lst = [prefix_mod + x + suffix_mod for x in IMAGENET_LABELS_TEXT]
     else:
         raise Exception("Unknown dataset.")
 
-    text_lst += extensions if extensions else []
+    if extensions:
+        text_lst += [prefix_mod + x + suffix_mod for x in extensions]
     return generate_text_lst(text_lst, image_noun)
 
 
@@ -126,11 +129,12 @@ def get_model(name, dataset_name, use_clip):
         raise Exception("Invalid dataset")
 
 
-def get_pipeline(model_name, dataset_name, use_clip, label_noun=None, extensions=None):
+def get_pipeline(model_name, dataset_name, use_clip, label_noun=None, extensions=None,
+                 prefix_mod="", suffix_mod=""):
     model = get_model(model_name, dataset_name, use_clip)
     if use_clip:
-        label_texts = get_label_text_lst(dataset_name, extensions, label_noun)
-        return CLIP_Pipeline(model, label_texts)
+        label_texts = get_label_text_lst(dataset_name, extensions, label_noun, prefix_mod, suffix_mod)
+        return CLIP_Pipeline(model, label_texts, model_name)
     else:
         return Classic_Pipeline(model)
 

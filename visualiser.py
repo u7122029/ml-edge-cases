@@ -25,6 +25,20 @@ parser.add_argument(
     default=None
 )
 parser.add_argument(
+    "--prefix-mod",
+    required=False,
+    type=str,
+    help="The prefix modifier for all labels.",
+    default=""
+)
+parser.add_argument(
+    "--suffix-mod",
+    required=False,
+    type=str,
+    help="The suffix modifier for all labels.",
+    default=""
+)
+parser.add_argument(
     "--dataset",
     required=False,
     default="cifar10-test",
@@ -50,7 +64,7 @@ def load_results(dset_name, modelname):
     return torch.load(f"results/{dset_name}/{modelname}.pt")
 
 
-def generate_plot(dset, indices, top3preds, top3confs, labels_text):
+def generate_plot(dset, indices, top3preds, top3confs, labels_text, zoom=0.5):
     print("gp")
     #selected_images = np.array([img for img, _ in dset])[indices]
     #selected_labels = np.array([label for _,label in dset])[indices]
@@ -66,7 +80,7 @@ def generate_plot(dset, indices, top3preds, top3confs, labels_text):
     line = ax.scatter(x,y, ls="", marker=".")
 
     # create the annotations box
-    im = OffsetImage(np.zeros((32,32,3)), zoom=3)
+    im = OffsetImage(np.zeros((32,32,3)), zoom=zoom)
     text = TextArea("ABCDEF")
     content = VPacker(children=[im, text], sep=3)
 
@@ -106,6 +120,16 @@ def generate_plot(dset, indices, top3preds, top3confs, labels_text):
     fig.canvas.mpl_connect('motion_notify_event', hover)
 
 
+def generate_class_hist(top1preds, dataset):
+    plt.figure()
+    if dataset == "cifar10":
+        bins = 10
+    else:
+        bins = 1000
+    plt.hist(top1preds, bins=bins)
+
+
+
 if __name__ == "__main__":
     print(DEVICE)
     args = parser.parse_args()
@@ -114,17 +138,23 @@ if __name__ == "__main__":
     dataset_name, split = args.dataset.split("-")
     data_root = args.data_root
     use_clip = args.use_clip
+    prefix_mod = args.prefix_mod
+    suffix_mod = args.suffix_mod
     results_path = args.results_path
 
     dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip, visualise=True)
     results = load_results(f"{dataset_name}-{split}", model_name)
     labels = results["labels"]
-    print(labels)
     top3preds = results["top3preds"].to(torch.int16)
     top3confs = results["top3confs"]
-    incorrect = torch.where(top3preds[:,0] != labels)[0]
+    top1preds = top3preds[:,0]
+    incorrect = torch.where(top1preds != labels)[0]
     print(incorrect.shape)
     print(len(top3confs))
-    print("in main still")
-    generate_plot(dset, incorrect, top3preds, top3confs, labels_text)
+    if dataset_name == "cifar10":
+        zoom = 2
+    else:
+        zoom = 0.5
+    generate_plot(dset, incorrect, top3preds, top3confs, labels_text, zoom)
+    generate_class_hist(top1preds, dataset_name)
     plt.show()
