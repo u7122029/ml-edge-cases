@@ -36,14 +36,14 @@ parser.add_argument(
     "--prefix-mod",
     required=False,
     type=str,
-    help="The prefix modifier for all labels.",
+    help="The prefix modifier for all ground_labels.",
     default=""
 )
 parser.add_argument(
     "--suffix-mod",
     required=False,
     type=str,
-    help="The suffix modifier for all labels.",
+    help="The suffix modifier for all ground_labels.",
     default=""
 )
 parser.add_argument(
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     file_out = {
         "top3preds": [],
         "top3confs": [],
-        "labels": []
+        "ground_labels": []
     }
     with torch.no_grad():
         for batch, labels in tqdm(dataloader):
@@ -141,11 +141,11 @@ if __name__ == "__main__":
             preds = top3.indices.to(torch.int16)
             file_out["top3preds"].append(preds)
             file_out["top3confs"].append(confs)
-            file_out["labels"].append(labels)
+            file_out["ground_labels"].append(labels)
 
     file_out["top3preds"] = torch.concat(file_out["top3preds"]).to(torch.int16)
     file_out["top3confs"] = torch.concat(file_out["top3confs"])
-    file_out["labels"] = torch.concat(file_out["labels"]).to(torch.int16)
+    file_out["ground_labels"] = torch.concat(file_out["ground_labels"]).to(torch.int16)
 
     out_path = Path(f"{results_path}/{dataset_name}-{split}")
     out_path.mkdir(parents=True,exist_ok=True)

@@ -28,14 +28,14 @@ parser.add_argument(
     "--prefix-mod",
     required=False,
     type=str,
-    help="The prefix modifier for all labels.",
+    help="The prefix modifier for all ground_labels.",
     default=""
 )
 parser.add_argument(
     "--suffix-mod",
     required=False,
     type=str,
-    help="The suffix modifier for all labels.",
+    help="The suffix modifier for all ground_labels.",
     default=""
 )
 parser.add_argument(
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip, visualise=True)
     results = load_results(f"{dataset_name}-{split}", model_name)
-    labels = results["labels"]
+    labels = results["ground_labels"]
     top3preds = results["top3preds"].to(torch.int16)
     top3confs = results["top3confs"]
     top1preds = top3preds[:,0]
