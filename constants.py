@@ -38,5 +38,7 @@ CIFAR10_LABELS_TEXT = [
 # json file from https://github.com/anishathalye/imagenet-simple-labels/blob/master/imagenet-simple-labels.json
 IMAGENET_LABELS_TEXT = list(pd.read_json("imagenet-simple-labels.json")[0])
 
+DATA_PATH_DEFAULT = "C:/ml_datasets"
+
 if __name__ == "__main__":
     print(IMAGENET_LABELS_TEXT)

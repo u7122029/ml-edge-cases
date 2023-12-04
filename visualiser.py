@@ -91,7 +91,6 @@ def generate_plot(dset, indices, top3preds, top3confs, labels_text, zoom=0.5):
     # add it to the axes and make it invisible
     ax.add_artist(ab)
     ab.set_visible(False)
-    print("here")
 
     def hover(event):
         # if the mouse is over the scatter points

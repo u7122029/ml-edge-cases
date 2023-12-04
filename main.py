@@ -62,14 +62,29 @@ parser.add_argument(
 )
 
 
-def get_dataset(dataset_name, split, data_root, use_clip, visualise=False):
-    data_root = Path(data_root)
+def decide_transform(dataset_name, use_clip, visualise, transform):
+    if transform is not None:
+        return transform
+
+    # Otherwise give default transform
+    if use_clip or visualise:
+        return PILToTensor()
+
     if dataset_name == "cifar10":
-        transform = PILToTensor() if use_clip or visualise else CIFAR10_TRANSFORM
+        return CIFAR10_TRANSFORM
+    elif dataset_name == "imagenet":
+        return IMAGENET_TRANSFORM
+    else:
+        raise Exception(f"Invalid dataset name '{dataset_name}'.")
+
+
+def get_dataset(dataset_name, split, data_root, use_clip, visualise=False, transform=None):
+    data_root = Path(data_root)
+    transform = decide_transform(dataset_name,use_clip,visualise,transform)
+    if dataset_name == "cifar10":
         split_map = {"train": True, "test": False}
         return CIFAR10(root=str(data_root), train=split_map[split], transform=transform), CIFAR10_LABELS_TEXT
     elif dataset_name == "imagenet":
-        transform = PILToTensor() if use_clip or visualise else IMAGENET_TRANSFORM
         return ImageNet(root=str(data_root / "imagenet"), split=split, transform=transform), IMAGENET_LABELS_TEXT
     else:
         raise Exception(f"Invalid dataset name '{dataset_name}'.")
