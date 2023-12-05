@@ -7,8 +7,10 @@ from io import BytesIO
 import numpy as np
 from bokeh.io import show
 from bokeh.models import ColumnDataSource, CategoricalColorMapper, HoverTool
-from bokeh.palettes import Spectral10, Spectral3, Inferno3, Colorblind3
+from bokeh.palettes import Spectral10, Spectral3, Inferno3, Inferno10
 from bokeh.plotting import figure
+from transformers import CLIPVisionModel, AutoProcessor
+from tqdm import tqdm
 
 from main import get_dataset
 from constants import *
@@ -23,7 +25,7 @@ class Flatten:
 
 
 def embeddable_image1(data):
-    img_data = data.reshape(32,32,3)
+    img_data = data.reshape(3,32,32).permute(1,2,0)
     image = Image.fromarray(img_data.numpy(), mode='RGB').resize((64, 64), Image.Resampling.BICUBIC)
     buffer = BytesIO()
     image.save(buffer, format='png')
@@ -41,9 +43,24 @@ def get_pred_positions(top_preds, ground_labels, unique_labels):
     return output
 
 
+def get_image_features(images, model_name):
+    model = CLIPVisionModel.from_pretrained(f"openai/{model_name}").to("cuda")
+    processor = AutoProcessor.from_pretrained(f"openai/{model_name}")
+
+    images = images.permute(0,2,3,1)
+    outputs = []
+    for image in tqdm(images,total=len(images)):
+        input = processor(images=[image], return_tensors="pt").to("cuda")
+        output = model(**input)
+        outputs.append(output.pooler_output.cpu().detach().flatten())
+    outputs = torch.stack(outputs)
+    return outputs
+
+
 if __name__ == "__main__":
     # Load results file
-    results = torch.load("results/cifar10-test/clip-vit-large-patch14-336.pt")
+    model_name = "clip-vit-large-patch14-336"
+    results = torch.load(f"results/cifar10-test/{model_name}.pt")
     labels = results["labels"]
     top3preds = results["top3preds"].to(torch.int16)
     top3confs = results["top3confs"]
@@ -56,7 +73,7 @@ if __name__ == "__main__":
                              "test",
                              DATA_PATH_DEFAULT,
                              True,
-                             transform=Compose([PILToTensor(), Flatten()]))
+                             transform=Compose([PILToTensor()]))
 
     images = []
     labels = []
@@ -76,12 +93,14 @@ if __name__ == "__main__":
     #torch.set_printoptions(profile="full")
 
     reducer = umap.UMAP(metric="cosine")
-    embedding = reducer.fit_transform(incorrect_images)
+    features = get_image_features(incorrect_images, model_name)
+    embedding = reducer.fit_transform(features)
 
     classes_df = pd.DataFrame(embedding, columns=["x","y"])
     #print(classes_df)
     classes_df["pred_pos"] = list(map(lambda x: str(x.item()), pred_poses))
-    classes_df["label"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in actual_labels]
+    classes_df["label"] = [str(x.item()) for x in actual_labels]
+    classes_df["label_text"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in actual_labels]
     classes_df["image"] = list(map(embeddable_image1, incorrect_images))
     classes_df["pred1"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 0]]
     classes_df["pred2"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 1]]
@@ -94,8 +113,8 @@ if __name__ == "__main__":
         print(classes_df)
 
     datasource = ColumnDataSource(classes_df)
-    color_mapping = CategoricalColorMapper(factors=[str(2 - x) for x in range(3)],
-                                           palette=Colorblind3)
+    color_mapping = CategoricalColorMapper(factors=[str(9 - x) for x in range(10)],
+                                           palette=Inferno10)
 
     plot_figure = figure(
         title='UMAP projection of the CIFAR10 dataset',
@@ -138,7 +157,7 @@ if __name__ == "__main__":
         'x',
         'y',
         source=datasource,
-        color=dict(field='pred_pos', transform=color_mapping),
+        color=dict(field='label', transform=color_mapping),
         line_alpha=0.6,
         fill_alpha=0.6,
         size=4
