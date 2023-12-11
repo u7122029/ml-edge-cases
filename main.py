@@ -9,21 +9,20 @@ from pathlib import Path
 from models import get_pipeline
 import argparse
 
-parser = argparse.ArgumentParser(description="Pretrained Model Tester")
+parser = argparse.ArgumentParser(description="Clusterer")
 parser.add_argument(
     "--model",
     required=True,
     type=str,
-    help="The classifier to run." # TODO: ADD VALID CHOICES
+    help="The classifier to run.",
+    choices=VALID_MODELS
 )
-parser.add_argument("--use-clip",
-                    action=argparse.BooleanOptionalAction)
 parser.add_argument(
     "--image-noun",
     required=False,
     type=str,
     help="The image noun to use for clip models.",
-    default=None
+    default=""
 )
 parser.add_argument(
     "--dataset",
@@ -62,12 +61,12 @@ parser.add_argument(
 )
 
 
-def decide_transform(dataset_name, use_clip, visualise, transform):
-    if transform is not None:
-        return transform
+def decide_transform(dataset_name, model_type, visualise, own_transform=None):
+    if own_transform is not None:
+        return own_transform
 
-    # Otherwise give default transform
-    if use_clip or visualise:
+    # Otherwise give default own_transform
+    if model_type in CLIP_TRANSFORM_MODELS or visualise:
         return PILToTensor()
 
     if dataset_name == "cifar10":
@@ -78,9 +77,9 @@ def decide_transform(dataset_name, use_clip, visualise, transform):
         raise Exception(f"Invalid dataset name '{dataset_name}'.")
 
 
-def get_dataset(dataset_name, split, data_root, use_clip, visualise=False, transform=None):
+def get_dataset(dataset_name, split, data_root, model_type, visualise=False, transform=None):
     data_root = Path(data_root)
-    transform = decide_transform(dataset_name,use_clip,visualise,transform)
+    transform = decide_transform(dataset_name, model_type, visualise, transform)
     if dataset_name == "cifar10":
         split_map = {"train": True, "test": False}
         return CIFAR10(root=str(data_root), train=split_map[split], transform=transform), CIFAR10_LABELS_TEXT
@@ -114,42 +113,45 @@ def id(x):
 if __name__ == "__main__":
     print(DEVICE)
     args = parser.parse_args()
-    model_name = args.model
-    image_noun = args.image_noun
-    dataset_name, split = args.dataset.split("-")
+
     data_root = args.data_root
-    use_clip = args.use_clip
+    dataset_full = args.dataset
+    dataset_name, dataset_split = dataset_full.split("-")
+
+    model_name = args.model
+    model_type, weights_name = model_name_parser(model_name)
+
+    results_path = args.results_path
+    image_noun = args.image_noun
     prefix_mod = args.prefix_mod
     suffix_mod = args.suffix_mod
-    results_path = args.results_path
 
-    dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip) #get_dataset("CIFAR10", root="C:/ml_datasets", transform=CIFAR10_TRANSFORM, train=False)
-    dataloader = DataLoader(dset, batch_size=64, collate_fn=None if not use_clip else id)
-    pipeline = get_pipeline(model_name, dataset_name, use_clip, label_noun=image_noun,
+    dset, labels_text = get_dataset(dataset_name, dataset_split, data_root, model_type) #get_dataset("CIFAR10", root="C:/ml_datasets", own_transform=CIFAR10_TRANSFORM, train=False)
+    dataloader = DataLoader(dset, batch_size=64, collate_fn=None if model_type not in CLIP_TRANSFORM_MODELS else id)
+    pipeline = get_pipeline(model_type, weights_name, dataset_name,
+                            label_noun=image_noun,
                             prefix_mod=prefix_mod, suffix_mod=suffix_mod).to(DEVICE)
 
     file_out = {
-        "top3preds": [],
-        "top3confs": [],
-        "ground_labels": []
+        "top10preds": [],
+        "top10confs": [],
+        "labels": []
     }
     with torch.no_grad():
         for batch, labels in tqdm(dataloader):
             output = pipeline(batch).cpu()
-            top3 = torch.topk(output, 3, dim=1)
-            confs = top3.values
-            preds = top3.indices.to(torch.int16)
-            file_out["top3preds"].append(preds)
-            file_out["top3confs"].append(confs)
-            file_out["ground_labels"].append(labels)
+            top10 = torch.topk(output, 10, dim=1)
+            confs = top10.values
+            preds = top10.indices.to(torch.int16)
+            file_out["top10preds"].append(preds)
+            file_out["top10confs"].append(confs)
+            file_out["labels"].append(labels)
 
-    file_out["top3preds"] = torch.concat(file_out["top3preds"]).to(torch.int16)
-    file_out["top3confs"] = torch.concat(file_out["top3confs"])
-    file_out["ground_labels"] = torch.concat(file_out["ground_labels"]).to(torch.int16)
+    file_out["top10preds"] = torch.concat(file_out["top10preds"]).to(torch.int16)
+    file_out["top10confs"] = torch.concat(file_out["top10confs"])
+    file_out["labels"] = torch.concat(file_out["labels"]).to(torch.int16)
 
-    out_path = Path(f"{results_path}/{dataset_name}-{split}")
-    out_path.mkdir(parents=True,exist_ok=True)
-    noun_repr = f"_{image_noun}" if image_noun and use_clip else ""
-    pfmod_repr = f"_{prefix_mod}" if prefix_mod and use_clip else ""
-    sfmod_repr = f"_{suffix_mod}" if suffix_mod and use_clip else ""
-    torch.save(file_out, str(out_path / f"{model_name}{noun_repr}{pfmod_repr}{sfmod_repr}.pt"))
+    results_file_path = get_output_path(results_path, dataset_full, model_type, weights_name,
+                                        image_noun, prefix_mod, suffix_mod)
+    results_file_path.parent.mkdir(parents=True,exist_ok=True)
+    torch.save(file_out, str(results_file_path))

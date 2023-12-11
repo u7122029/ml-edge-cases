@@ -4,20 +4,23 @@ import torchvision.models as tvm
 
 
 class Classic_Pipeline(Model_Pipeline):
-    def __init__(self, model_name, dataset_name, device="cpu"):
+    def __init__(self, weights_name, dataset_name, device="cpu"):
         self.dataset_name = dataset_name
-        super().__init__(model_name, device)
+        super().__init__("classic", weights_name, device)
 
     def _Model_Pipeline__put_on_device(self, device):
         super()._Model_Pipeline__put_on_device(device)
         self.model = self.model.to(device)
 
+    def get_image_features(self, batch):
+        pass # TODO: Implement this eventually.
+
     def _Model_Pipeline__get_model(self):
         if self.dataset_name == "cifar10":
-            self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", f"cifar10_{self.model_name}",
+            self.model = torch.hub.load("chenyaofo/pytorch-cifar-models", f"cifar10_{self.weights_name}",
                            pretrained=True, trust_repo=True)
         elif self.dataset_name == "imagenet":
-            self.model = tvm.get_model(self.model_name, weights="DEFAULT")
+            self.model = tvm.get_model(self.weights_name, weights="DEFAULT")
 
     def process_input(self, x):
         return x.to(self.device)
@@ -37,8 +40,3 @@ class Classic_Pipeline(Model_Pipeline):
 
     def __str__(self):
         return f"""Clip_Pipeline{{\ndataset_name: {self.dataset_name}\n{super().__str__()}}}"""
-
-
-if __name__ == "__main__":
-    p = Classic_Pipeline("resnet56", "cifar10")
-    print(p)

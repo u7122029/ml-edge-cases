@@ -1,7 +1,7 @@
 import torchvision.models as tvm
 import torch
 from abc import ABC, abstractmethod
-from pipelines import Classic_Pipeline, CLIP_Pipeline
+from pipelines import *
 
 from constants import *
 
@@ -34,13 +34,22 @@ def get_label_text_lst(dataset, extensions=None, image_noun=None, prefix_mod="",
     return generate_text_lst(text_lst, image_noun)
 
 
-def get_pipeline(model_name, dataset_name, use_clip, label_noun=None, extensions=None,
+def get_pipeline(model_type, weights_name, dataset_name, label_noun=None, extensions=None,
                  prefix_mod="", suffix_mod=""):
-    if use_clip:
-        label_texts = get_label_text_lst(dataset_name, extensions, label_noun, prefix_mod, suffix_mod)
-        return CLIP_Pipeline(model_name, label_texts)
+    print(model_type)
+    label_texts = get_label_text_lst(dataset_name, extensions, label_noun, prefix_mod, suffix_mod)
+    if model_type == "clip":
+        return CLIP_Pipeline(weights_name, label_texts)
+    elif model_type == "blip":
+        return BLIP_Pipeline(weights_name, label_texts)
+    elif model_type == "altclip":
+        return ALTCLIP_Pipeline(weights_name, label_texts)
+    elif model_type == "groupvit":
+        return GroupViT_Pipeline(weights_name, label_texts)
+    elif model_type == "owlvit":
+        return OWLViT_Pipeline(weights_name, label_texts)
     else:
-        return Classic_Pipeline(model_name, dataset_name)
+        return Classic_Pipeline(weights_name, dataset_name)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 
 class Model_Pipeline(ABC):
-    def __init__(self, model_name, device):
+    def __init__(self, model_type, weights_name, device):
         self.device = device
-        self.model_name = model_name
+        self.model_type = model_type
+        self.weights_name = weights_name
 
         self.__get_model()
         self.__put_on_device(self.device)
@@ -25,8 +26,20 @@ class Model_Pipeline(ABC):
         self.__put_on_device(device)
         return self
 
+    def model_name(self):
+        return f"{self.model_type}_{self.weights_name}"
+
     def get_model(self):
         return str(self.model)
+
+    @abstractmethod
+    def get_image_features(self, batch):
+        """
+        Takes a batch of images and extracts features from each image.
+        :param batch: PyTorch Tensor of size B * H * W * NUM_CHANNELS
+        :return: PyTorch Tensor of size B * EMBED_SIZE
+        """
+        pass
 
     @abstractmethod
     def __call__(self, batch):
@@ -40,4 +53,4 @@ class Model_Pipeline(ABC):
 
     @abstractmethod
     def __str__(self):
-        return f"""device: {self.device}\nmodel_name: {self.model_name}"""
+        return f"""device: {self.device}\nmodel_name: {self.model_name()}"""

@@ -1,33 +1,23 @@
 from .base_pipeline import Model_Pipeline
-from transformers import CLIPProcessor, CLIPModel, CLIPVisionModel
-from tqdm import tqdm
+from transformers import OwlViTModel, OwlViTVisionModel, OwlViTProcessor
 import torch
+from tqdm import tqdm
 
-
-class CLIP_Pipeline(Model_Pipeline):
+class OWLViT_Pipeline(Model_Pipeline):
     def __init__(self, weights_name, label_texts, device="cpu"):
-        super().__init__("clip", weights_name, device)
+        super().__init__("owlvit", weights_name, device)
         self.label_texts = label_texts
 
     def _Model_Pipeline__get_model(self):
-        self.processor = CLIPProcessor.from_pretrained(self.weights_name)
-        self.model = CLIPModel.from_pretrained(self.weights_name)
-        self.vision_model = CLIPVisionModel.from_pretrained(self.weights_name)
+        #use_fast = False if self.weights_name in {"BAAI/AltCLIP-m9", "BAAI/AltCLIP-m18"} else True
+        self.processor = OwlViTProcessor.from_pretrained(self.weights_name)#, use_fast=use_fast)
+        self.model = OwlViTModel.from_pretrained(self.weights_name)
+        self.vision_model = OwlViTVisionModel.from_pretrained(self.weights_name)
 
     def _Model_Pipeline__put_on_device(self, device):
         super()._Model_Pipeline__put_on_device(device)
         self.model = self.model.to(self.device)
         self.vision_model = self.vision_model.to(self.device)
-
-    def process_input(self, images):
-        return self.processor(text=self.label_texts, images=images,
-                              return_tensors="pt", padding=True).to(self.device)
-
-    def forward(self, inputs):
-        return self.model(**inputs)
-
-    def process_output(self, outputs):
-        return outputs.logits_per_image.softmax(dim=1)
 
     def get_image_features(self, batch):
         outputs = []
@@ -38,6 +28,16 @@ class CLIP_Pipeline(Model_Pipeline):
         outputs = torch.stack(outputs)
         return outputs
 
+    def process_input(self, images):
+        return self.processor(text=self.label_texts, images=images,
+                                return_tensors="pt", padding=True).to(self.device)
+
+    def forward(self, inputs):
+        return self.model(**inputs)
+
+    def process_output(self, outputs):
+        return outputs.logits_per_image.softmax(dim=1)
+
     def __call__(self, batch):
         processed_input = self.process_input(batch)
         output = self.forward(processed_input)
@@ -45,9 +45,4 @@ class CLIP_Pipeline(Model_Pipeline):
         return processed_output
 
     def __str__(self):
-        return f"""CLIP_Pipeline{{\nlabel_texts: {self.label_texts}\n{super().__str__()}}}"""
-
-
-if __name__ == "__main__":
-    p = CLIP_Pipeline("openai/clip-vit-base-patch32", ["test"], "cuda")
-    print(p)
+        return f"""OWLViT_Pipeline{{\nlabel_texts: {self.label_texts}\n{super().__str__()}}}"""

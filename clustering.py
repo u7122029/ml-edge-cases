@@ -1,20 +1,75 @@
-import pandas as pd
-import torch
-import umap
-from PIL import Image
 import base64
 from io import BytesIO
-import numpy as np
-from bokeh.io import show
+import argparse
+
+import umap
+from PIL import Image
+from bokeh.io import show, output_file
 from bokeh.models import ColumnDataSource, CategoricalColorMapper, HoverTool
-from bokeh.palettes import Spectral10, Spectral3, Inferno3, Inferno10
+from bokeh.palettes import Inferno10, Category10, TolRainbow, varying_alpha_palette, Viridis256, Plasma256, Turbo256
 from bokeh.plotting import figure
-from transformers import CLIPVisionModel, AutoProcessor
-from tqdm import tqdm
+from models import get_pipeline
 
-from main import get_dataset
 from constants import *
+from main import get_dataset
 
+parser = argparse.ArgumentParser(description="Clusterer")
+parser.add_argument(
+    "--model",
+    required=True,
+    type=str,
+    help="The classifier to run.",
+    choices=VALID_MODELS
+)
+parser.add_argument(
+    "--image-noun",
+    required=False,
+    type=str,
+    help="The image noun to use for clip models.",
+    default=""
+)
+parser.add_argument(
+    "--dataset",
+    required=False,
+    default="cifar10-test",
+    help="The name of the dataset that should be used.",
+    choices=["imagenet-val", "cifar10-test"]
+)
+parser.add_argument(
+    "--prefix-mod",
+    required=False,
+    type=str,
+    help="The prefix modifier for all ground_labels.",
+    default=""
+)
+parser.add_argument(
+    "--suffix-mod",
+    required=False,
+    type=str,
+    help="The suffix modifier for all ground_labels.",
+    default=""
+)
+parser.add_argument(
+    "--data-root",
+    required=False,
+    default="C:/ml_datasets",
+    type=str,
+    help="path containing all datasets (training and validation)"
+)
+parser.add_argument(
+    "--results-path",
+    required=False,
+    default="results",
+    type=str,
+    help="The path to store results."
+)
+parser.add_argument(
+    "--figures-path",
+    required=False,
+    default=FIGURES_PATH_DEFAULT,
+    type=str,
+    help="The path to store figures."
+)
 
 class Flatten:
     def __init__(self):
@@ -43,27 +98,34 @@ def get_pred_positions(top_preds, ground_labels, unique_labels):
     return output
 
 
-def get_image_features(images, model_name):
-    model = CLIPVisionModel.from_pretrained(f"openai/{model_name}").to("cuda")
-    processor = AutoProcessor.from_pretrained(f"openai/{model_name}")
-
-    images = images.permute(0,2,3,1)
-    outputs = []
-    for image in tqdm(images,total=len(images)):
-        input = processor(images=[image], return_tensors="pt").to("cuda")
-        output = model(**input)
-        outputs.append(output.pooler_output.cpu().detach().flatten())
-    outputs = torch.stack(outputs)
-    return outputs
-
-
 if __name__ == "__main__":
     # Load results file
-    model_name = "clip-vit-large-patch14-336"
-    results = torch.load(f"results/cifar10-test/{model_name}.pt")
+    colours = Turbo256#Plasma256#Viridis256#varying_alpha_palette("#FF0000", 60,10)
+    args = parser.parse_args()
+
+    data_root = args.data_root
+    dataset_full = args.dataset
+    dataset_name, dataset_split = dataset_full.split("-")
+
+    model_name = args.model
+    model_type, weights_name = model_name_parser(model_name)
+
+    results_path = args.results_path
+    image_noun = args.image_noun
+    prefix_mod = args.prefix_mod
+    suffix_mod = args.suffix_mod
+    figures_path = args.figures_path
+
+    results_file_path = get_output_path(results_path, dataset_full, model_type, weights_name,
+                                        image_noun, prefix_mod, suffix_mod)
+    figures_file_path = get_output_path(figures_path, dataset_full, model_type, weights_name,
+                                        image_noun, prefix_mod, suffix_mod, filetype="html")
+    figures_file_path.parent.mkdir(parents=True,exist_ok=True)
+
+    results = torch.load(str(results_file_path))
     labels = results["labels"]
-    top3preds = results["top3preds"].to(torch.int16)
-    top3confs = results["top3confs"]
+    top3preds = results["top10preds"].to(torch.int16)
+    top3confs = results["top10confs"]
 
     top1preds = top3preds[:,0]
     top1confs = top3confs[:,0]
@@ -74,6 +136,8 @@ if __name__ == "__main__":
                              DATA_PATH_DEFAULT,
                              True,
                              transform=Compose([PILToTensor()]))
+
+    pipeline = get_pipeline(model_type, weights_name, dataset_name).to(DEVICE)
 
     images = []
     labels = []
@@ -93,7 +157,7 @@ if __name__ == "__main__":
     #torch.set_printoptions(profile="full")
 
     reducer = umap.UMAP(metric="cosine")
-    features = get_image_features(incorrect_images, model_name)
+    features = pipeline.get_image_features(incorrect_images)
     embedding = reducer.fit_transform(features)
 
     classes_df = pd.DataFrame(embedding, columns=["x","y"])
@@ -105,16 +169,31 @@ if __name__ == "__main__":
     classes_df["pred1"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 0]]
     classes_df["pred2"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 1]]
     classes_df["pred3"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 2]]
-    classes_df["conf1"] = [str(x.item()) for x in incorrect_confs[:, 0]]
+
+    classes_df["conf1"] = incorrect_confs[:, 0]
+    classes_df["conf1"] = classes_df["conf1"].astype(str)
     classes_df["conf2"] = [str(x.item()) for x in incorrect_confs[:, 1]]
     classes_df["conf3"] = [str(x.item()) for x in incorrect_confs[:, 2]]
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-        print(classes_df)
+    top10_diff = 2 ** (-torch.Tensor(list(range(10))))
+    top10_diff = top10_diff.repeat(len(incorrect_confs), 1)
+    top10_diff *= incorrect_confs
+    top10_diff = top10_diff[:, 0] - top10_diff[:, 1:].sum(dim=1)
+
+    classes_df["top10_diff"] = top10_diff
+    classes_df["top10_diff_str"] = classes_df["top10_diff"].astype(str)
+    classes_df["top10_diff"] *= len(colours)
+    classes_df["top10_diff"] = classes_df["top10_diff"].astype(int).astype(str)
+
+    classes_df["conf1_idx"] = (classes_df["conf1"].astype(float) * len(colours)).astype(int).astype(str)
+
+
+    #with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+    #    print(classes_df)
 
     datasource = ColumnDataSource(classes_df)
-    color_mapping = CategoricalColorMapper(factors=[str(9 - x) for x in range(10)],
-                                           palette=Inferno10)
+    color_mapping = CategoricalColorMapper(factors=list(map(str, range(len(colours)))),
+                                           palette=colours)
 
     plot_figure = figure(
         title='UMAP projection of the CIFAR10 dataset',
@@ -133,12 +212,15 @@ if __name__ == "__main__":
             <span style='font-size: 18px'>@pred_pos</span>
             <br>
             <span style='font-size: 16px; color: #224499'>Label:</span>
-            <span style='font-size: 18px'>@label</span>
+            <span style='font-size: 18px'>@label_text</span>
+            <br>
+            <span style='font-size: 16px; color: #224499'>Top10_diff:</span>
+            <span style='font-size: 18px'>@top10_diff_str</span>
             <br>
             <table>
                 <tr>
-                    <td>@pred1</td>
-                    <td>@conf1</td>
+                    <td><strong>@pred1</strong></td>
+                    <td><strong>@conf1</strong></td>
                 </tr>
                 <tr>
                     <td>@pred2</td>
@@ -157,9 +239,10 @@ if __name__ == "__main__":
         'x',
         'y',
         source=datasource,
-        color=dict(field='label', transform=color_mapping),
+        color=dict(field='top10_diff', transform=color_mapping),
         line_alpha=0.6,
         fill_alpha=0.6,
         size=4
     )
+    output_file(str(figures_file_path), mode='inline')
     show(plot_figure)
