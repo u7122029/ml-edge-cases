@@ -36,7 +36,6 @@ def get_label_text_lst(dataset, extensions=None, image_noun=None, prefix_mod="",
 
 def get_pipeline(model_type, weights_name, dataset_name, label_noun=None, extensions=None,
                  prefix_mod="", suffix_mod=""):
-    print(model_type)
     label_texts = get_label_text_lst(dataset_name, extensions, label_noun, prefix_mod, suffix_mod)
     if model_type == "clip":
         return CLIP_Pipeline(weights_name, label_texts)

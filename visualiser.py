@@ -144,8 +144,8 @@ if __name__ == "__main__":
     dset, labels_text = get_dataset(dataset_name, split, data_root, use_clip, visualise=True)
     results = load_results(f"{dataset_name}-{split}", model_name)
     labels = results["ground_labels"]
-    top3preds = results["top3preds"].to(torch.int16)
-    top3confs = results["top3confs"]
+    top3preds = results["top10preds"].to(torch.int16)
+    top3confs = results["top10confs"]
     top1preds = top3preds[:,0]
     incorrect = torch.where(top1preds != labels)[0]
     print(incorrect.shape)

@@ -1,5 +1,5 @@
 from .base_pipeline import Model_Pipeline
-from transformers import OwlViTModel, OwlViTVisionModel, OwlViTProcessor
+from transformers import OwlViTModel, OwlViTVisionModel, AutoProcessor
 import torch
 from tqdm import tqdm
 
@@ -10,7 +10,7 @@ class OWLViT_Pipeline(Model_Pipeline):
 
     def _Model_Pipeline__get_model(self):
         #use_fast = False if self.weights_name in {"BAAI/AltCLIP-m9", "BAAI/AltCLIP-m18"} else True
-        self.processor = OwlViTProcessor.from_pretrained(self.weights_name)#, use_fast=use_fast)
+        self.processor = AutoProcessor.from_pretrained(self.weights_name)#, use_fast=use_fast)
         self.model = OwlViTModel.from_pretrained(self.weights_name)
         self.vision_model = OwlViTVisionModel.from_pretrained(self.weights_name)
 
@@ -29,7 +29,7 @@ class OWLViT_Pipeline(Model_Pipeline):
         return outputs
 
     def process_input(self, images):
-        return self.processor(text=self.label_texts, images=images,
+        return self.processor(text=[self.label_texts], images=images,
                                 return_tensors="pt", padding=True).to(self.device)
 
     def forward(self, inputs):
