@@ -30,7 +30,7 @@ parser.add_argument(
     required=False,
     type=str,
     help="The image noun to use for clip models.",
-    default=""
+    default="photo"
 )
 parser.add_argument(
     "--dataset",
@@ -273,6 +273,7 @@ def perform_pacmap(pipeline, images):
     features = pipeline.get_image_features(images)
     embedding = reducer.fit_transform(features)
     return embedding
+
 
 def main(args):
     # Load results file

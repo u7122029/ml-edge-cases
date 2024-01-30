@@ -59,7 +59,10 @@ VALID_MODELS = [
     "groupvit@nvidia/groupvit-gcc-redcaps",
     "owlvit@google/owlvit-base-patch32",
     "owlvit@google/owlvit-base-patch16",
-    "owlvit@google/owlvit-large-patch14"
+    "owlvit@google/owlvit-large-patch14",
+    "blip@Salesforce/blip-itm-base-coco",
+    "blip@Salesforce/blip-itm-large-coco",
+    "blip@Salesforce/blip-itm-base-flickr"
 ]
 
 

@@ -22,7 +22,7 @@ parser.add_argument(
     required=False,
     type=str,
     help="The image noun to use for clip models.",
-    default=""
+    default="photo"
 )
 parser.add_argument(
     "--dataset",
