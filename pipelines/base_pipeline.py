@@ -1,10 +1,47 @@
 from abc import ABC, abstractmethod
 
+
+class Base_Pipeline(ABC):
+    def __init__(self, pre_image_transform=None, pre_label_transform=None, device="cpu"):
+        self.pre_image_transform = pre_image_transform
+        self.pre_label_transform = pre_label_transform
+        self.device = device
+
+    @abstractmethod
+    def to(self, device):
+        self.device = device
+
+    def get_image_features(self, dataset_func, label_texts, **kwargs):
+        """
+        Runs the pipeline over the dataset function.
+        :param dataset_func: function (pre_image_transform, pre_label_transform) -> dataset
+        :return: the image features for each image in the dataset.
+        """
+        pass
+
+    @abstractmethod
+    def __call__(self, dataset_func, label_texts, **kwargs):
+        """
+        Runs the pipeline over the dataset function.
+        :param dataset_func: function (pre_image_transform, pre_label_transform) -> dataset
+        :return: desired output to return after applying model to dataset.
+        """
+        pass
+
+
 class Model_Pipeline(ABC):
-    def __init__(self, model_type, weights_name, device):
+    def __init__(self, model_type, weights_name, dataset_transform, device="cpu"):
+        """
+        Initialisor for a Model Pipeline.
+        :param model_type: The type of the model, eg: clip, blip, etc.
+        :param weights_name: The model weights to use.
+        :param dataset_transform: The torchvision transform to apply over each image in the dataset.
+        :param device: The device eg: "cpu", "cuda", etc.
+        """
         self.device = device
         self.model_type = model_type
         self.weights_name = weights_name
+        self.dataset_transform = dataset_transform
 
         self.__get_model()
         self.__put_on_device(self.device)
@@ -42,10 +79,10 @@ class Model_Pipeline(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, batch):
+    def __call__(self, dataset_func):
         """
-        Runs a batch of input items through the pipeline.
-        :param batch: The batch of inputs
+        Runs a dataset through the pipeline.
+        :param dataset_func: A function transform -> pytorch dataset which applies the transform to the dataset.
         :return: The batch of outputs to return (eg: confidence scores, bounding boxes, etc)
         """
 

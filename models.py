@@ -1,8 +1,4 @@
-import torchvision.models as tvm
-import torch
-from abc import ABC, abstractmethod
 from pipelines import *
-
 from constants import *
 
 def a_or_an(word):
@@ -38,7 +34,7 @@ def get_pipeline(model_type, weights_name, dataset_name, label_noun=None, extens
                  prefix_mod="", suffix_mod=""):
     label_texts = get_label_text_lst(dataset_name, extensions, label_noun, prefix_mod, suffix_mod)
     if model_type == "clip":
-        return CLIP_Pipeline(weights_name, label_texts)
+        return CLIP_Pipeline(weights_name)
     elif model_type == "blip":
         return BLIP_Pipeline(weights_name, label_texts)
     elif model_type == "altclip":

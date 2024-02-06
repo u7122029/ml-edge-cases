@@ -16,6 +16,8 @@ from main import get_dataset
 import torch
 from sklearn.linear_model import LinearRegression
 import pacmap
+from torch.utils.data import Subset
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description="Clusterer")
 parser.add_argument(
@@ -91,8 +93,9 @@ class Flatten:
 
 
 def embeddable_image1(data):
-    img_data = data.reshape(3,32,32).permute(1,2,0)
-    image = Image.fromarray(img_data.numpy(), mode='RGB').resize((64, 64), Image.Resampling.BICUBIC)
+    #img_data = data.reshape(3,32,32).permute(1,2,0)
+    #image = Image.fromarray(img_data.numpy(), mode='RGB').resize((64, 64), Image.Resampling.BICUBIC)
+    image = data.resize((64, 64), Image.Resampling.BICUBIC)
     buffer = BytesIO()
     image.save(buffer, format='png')
     for_encoding = buffer.getvalue()
@@ -133,14 +136,14 @@ def avg_knn_dist(points, weighted_confs, k=10):
     dist_mat = torch.norm(points[:, None, :] - points[None, :, :], dim=2)#cosine_similarity(points[:, None, :], points[None, :, :], dim=-1, eps=1e-11)
     dist_mat = dist_mat / dist_mat.max() # Shorter distance gives bigger weight.
     tops = torch.topk(dist_mat,k=k,dim=1, largest=False)
-    top_dists = 1 - tops.values[:, 1:]
+    top_dists = tops.values[:, 1:]
     top_idxs = tops.indices[:, 1:]
-    top_confs = weighted_confs[top_idxs]
+    #top_confs = weighted_confs[top_idxs]
 
-    return torch.mean(top_dists * top_confs, dim=1)
+    return torch.mean(top_dists, dim=1)
 
 
-def avg_knn_dist1(points, weighted_confs, k=None):
+def weighted_avg_knn_dist(points, weighted_confs, k=None):
     # points is a N by M tensor
     if not k: k = len(points)
     else: k = min(k + 1, len(points))
@@ -235,7 +238,7 @@ def generate_plots(classes_df, figures_file_path, colours):
         'x',
         'y',
         source=datasource,
-        color=dict(field='top10_diff', transform=color_mapping),
+        color=dict(field='conf1_idx', transform=color_mapping),
         line_alpha=0.6,
         fill_alpha=0.6,
         size=4
@@ -248,7 +251,7 @@ def generate_plots(classes_df, figures_file_path, colours):
         tools=('pan, wheel_zoom, reset')
     )
     scatter_figure1.circle(
-        'top10_diff_original',
+        'conf1_raw',
         'k_nearest_avgs',
         source=datasource,
         # color=dict(field='top10_diff', transform=color_mapping),
@@ -268,10 +271,9 @@ def perform_umap(pipeline, images):
     return embedding
 
 
-def perform_pacmap(pipeline, images):
+def perform_pacmap(image_features):
     reducer = pacmap.PaCMAP()
-    features = pipeline.get_image_features(images)
-    embedding = reducer.fit_transform(features)
+    embedding = reducer.fit_transform(image_features)
     return embedding
 
 
@@ -311,51 +313,51 @@ def main(args):
     #top1confs = top10confs[:, 0]
     incorrect = torch.where(top1preds != labels)[0]
 
-    dataset, _ = get_dataset("cifar10",
+    dataset_conf, _ = get_dataset("cifar10",
                              "test",
                              DATA_PATH_DEFAULT,
-                             True,
-                             transform=Compose([PILToTensor()]))
+                             indices=incorrect)
+    dataset = dataset_conf()
 
     pipeline = get_pipeline(model_type, weights_name, dataset_name).to(DEVICE)
-
-    images = []
-    labels = []
-    for image, label in dataset:
-        images.append(image)
-        labels.append(label)
-
-    images = torch.stack(images)
-    labels = torch.tensor(labels)
 
     incorrect_preds = top10preds[incorrect]
     incorrect_confs = top10confs[incorrect]
 
-    incorrect_images = images[incorrect]
+    incorrect_images = []
+    actual_labels = []
+    for image, label in dataset:
+        incorrect_images.append(image)
+        actual_labels.append(label)
 
-    actual_labels = labels[incorrect]
+    actual_labels = torch.tensor(actual_labels)
+
     pred_poses = get_pred_positions(incorrect_preds, actual_labels, list(range(10)))
 
     # torch.set_printoptions(profile="full")
+    image_features = pipeline.get_image_features(dataset_conf)
 
     if not use_random_confs:
-        embedding = perform_pacmap(pipeline, incorrect_images)
+        embedding = perform_pacmap(image_features)
     else:
         embedding = torch.rand(4000,2)
 
     classes_df = pd.DataFrame(embedding, columns=["x", "y"])
     # classes_df["dist_from_centre"]
-    classes_df["pred_pos"] = list(map(lambda x: str(x.item()), pred_poses))
+    classes_df["pred_pos"] = pred_poses.tolist()
+    classes_df["pred_pos"] = classes_df["pred_pos"].astype(str)
+
     classes_df["label"] = actual_labels
     classes_df["label"] = classes_df["label"].astype(str)
+
     classes_df["label_text"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in actual_labels]
     classes_df["image"] = list(map(embeddable_image1, incorrect_images))
     classes_df["pred1"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 0]]
     classes_df["pred2"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 1]]
     classes_df["pred3"] = [str(CIFAR10_LABELS_TEXT[x.item()]) for x in incorrect_preds[:, 2]]
 
-    classes_df["conf1"] = incorrect_confs[:, 0]
-    classes_df["conf1"] = classes_df["conf1"].astype(str)
+    classes_df["conf1_raw"] = incorrect_confs[:, 0].tolist()
+    classes_df["conf1"] = classes_df["conf1_raw"].astype(str)
     classes_df["conf2"] = [str(x.item()) for x in incorrect_confs[:, 1]]
     classes_df["conf3"] = [str(x.item()) for x in incorrect_confs[:, 2]]
 
@@ -366,8 +368,8 @@ def main(args):
     classes_df["top10_diff"] = classes_df["top10_diff_original"] * len(colours)
     classes_df["top10_diff"] = classes_df["top10_diff"].astype(int).astype(str)
 
-    classes_df["conf1_idx"] = (classes_df["conf1"].astype(float) * len(colours)).astype(int).astype(str)
-    classes_df["k_nearest_avgs"] = avg_knn_dist1(torch.Tensor(embedding), top10_diff, k=50)
+    classes_df["conf1_idx"] = (classes_df["conf1_raw"] * len(colours)).astype(int).astype(str)
+    classes_df["k_nearest_avgs"] = avg_knn_dist(image_features, top10_diff, k=20)
 
     generate_plots(classes_df,figures_file_path,colours)
 

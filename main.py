@@ -1,12 +1,10 @@
 from torchvision.datasets import CIFAR10, ImageNet
-import torch
 from torch.utils.data import DataLoader
-import numpy as np
 from tqdm import tqdm
-from torchvision.transforms import PILToTensor
 from constants import *
 from pathlib import Path
 from models import get_pipeline
+from data import DatasetConfig
 import argparse
 
 parser = argparse.ArgumentParser(description="Clusterer")
@@ -69,6 +67,7 @@ def decide_transform(dataset_name, model_type, visualise, own_transform=None):
     if model_type in CLIP_TRANSFORM_MODELS or visualise:
         return PILToTensor()
 
+    # For models that do not have an embedded transformation.
     if dataset_name == "cifar10":
         return CIFAR10_TRANSFORM
     elif dataset_name == "imagenet":
@@ -77,7 +76,31 @@ def decide_transform(dataset_name, model_type, visualise, own_transform=None):
         raise Exception(f"Invalid dataset name '{dataset_name}'.")
 
 
-def get_dataset(dataset_name, split, data_root, model_type, visualise=False, transform=None):
+def get_dataset(dataset_name, split, data_root, indices=None, img_override_transform=None, label_override_transform=None):
+    data_root = Path(data_root)
+
+    if dataset_name == "cifar10":
+        split_map = {"train": True, "test": False}
+        return (DatasetConfig(CIFAR10,
+                              indices=indices,
+                              root=str(data_root),
+                              train=split_map[split],
+                              transform=img_override_transform,
+                              target_transform=label_override_transform),
+                CIFAR10_LABELS_TEXT)
+    elif dataset_name == "imagenet":
+        return (DatasetConfig(ImageNet,
+                              indices=indices,
+                              root=str(data_root / "imagenet"),
+                              split=split,
+                              transform=img_override_transform,
+                              target_transform=label_override_transform),
+                IMAGENET_LABELS_TEXT)
+    else:
+        raise Exception(f"Invalid dataset name '{dataset_name}'.")
+
+
+def get_dataset_original(dataset_name, split, data_root, model_type, visualise=False, transform=None):
     data_root = Path(data_root)
     transform = decide_transform(dataset_name, model_type, visualise, transform)
     if dataset_name == "cifar10":
@@ -126,11 +149,12 @@ if __name__ == "__main__":
     prefix_mod = args.prefix_mod
     suffix_mod = args.suffix_mod
 
-    dset, labels_text = get_dataset(dataset_name, dataset_split, data_root, model_type) #get_dataset("CIFAR10", root="C:/ml_datasets", own_transform=CIFAR10_TRANSFORM, train=False)
-    dataloader = DataLoader(dset, batch_size=64, collate_fn=None if model_type not in CLIP_TRANSFORM_MODELS else id)
+    dset_conf, labels_text = get_dataset(dataset_name, dataset_split, data_root) #get_dataset("CIFAR10", root="C:/ml_datasets", own_transform=CIFAR10_TRANSFORM, train=False)
+    #dataloader = DataLoader(dset, batch_size=64, collate_fn=None if model_type not in CLIP_TRANSFORM_MODELS else id)
     pipeline = get_pipeline(model_type, weights_name, dataset_name,
                             label_noun=image_noun,
-                            prefix_mod=prefix_mod, suffix_mod=suffix_mod).to(DEVICE)
+                            prefix_mod=prefix_mod,
+                            suffix_mod=suffix_mod).to(DEVICE)
 
     file_out = {
         "top10preds": [],
@@ -138,18 +162,14 @@ if __name__ == "__main__":
         "labels": []
     }
     with torch.no_grad():
-        for batch, labels in tqdm(dataloader):
-            output = pipeline(batch).cpu()
-            top10 = torch.topk(output, 10, dim=1)
-            confs = top10.values
-            preds = top10.indices.to(torch.int16)
-            file_out["top10preds"].append(preds)
-            file_out["top10confs"].append(confs)
-            file_out["labels"].append(labels)
+        model_outs, labels = pipeline(dset_conf, labels_text, batch_size=64).cpu()
+        top10 = torch.topk(model_outs, 10, dim=1)
+        confs = top10.values
+        preds = top10.indices.to(torch.int16)
 
-    file_out["top10preds"] = torch.concat(file_out["top10preds"]).to(torch.int16)
-    file_out["top10confs"] = torch.concat(file_out["top10confs"])
-    file_out["labels"] = torch.concat(file_out["labels"]).to(torch.int16)
+    file_out["top10preds"] = preds
+    file_out["top10confs"] = confs
+    file_out["labels"] = labels.to(torch.int16)
 
     results_file_path = get_output_path(results_path, dataset_full, model_type, weights_name,
                                         image_noun, prefix_mod, suffix_mod)

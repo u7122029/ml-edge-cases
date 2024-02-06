@@ -33,7 +33,8 @@ class BLIP_Pipeline(Model_Pipeline):
         ]
 
     def forward(self, inputs):
-        return torch.stack([self.model(**inp).itm_score[:,1].flatten() for inp in inputs])
+        out = torch.stack([self.model(**inp).itm_score for inp in inputs]).softmax(dim=2)[:,:,1]
+        return out
 
     def process_output(self, outputs):
         return outputs.softmax(dim=1)

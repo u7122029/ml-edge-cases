@@ -43,7 +43,7 @@ IMAGENET_LABELS_TEXT = list(pd.read_json("imagenet-simple-labels.json")[0])
 DATA_PATH_DEFAULT = "C:/ml_datasets"
 FIGURES_PATH_DEFAULT = "figures"
 
-VALID_MODELS = [
+VALID_MODELS_TRANSFORMERS = {
     "clip@openai/clip-vit-large-patch14",
     "clip@openai/clip-vit-base-patch16",
     "clip@openai/clip-vit-base-patch32",
@@ -63,7 +63,11 @@ VALID_MODELS = [
     "blip@Salesforce/blip-itm-base-coco",
     "blip@Salesforce/blip-itm-large-coco",
     "blip@Salesforce/blip-itm-base-flickr"
-]
+}
+
+VALID_MODELS_LAVIS = set()
+
+VALID_MODELS = VALID_MODELS_TRANSFORMERS.union(VALID_MODELS_LAVIS)
 
 
 def model_name_parser(inp):
