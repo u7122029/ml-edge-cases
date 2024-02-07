@@ -189,13 +189,13 @@ def construct_random_data(N = 2000):
     return labels, top10preds, confs
 
 
-def generate_plots(classes_df, figures_file_path, colours):
+def generate_plots(classes_df, figures_file_path, colours, lr, k=None):
     datasource = ColumnDataSource(classes_df)
     color_mapping = CategoricalColorMapper(factors=list(map(str, range(len(colours)))),
                                            palette=colours)
 
     scatter_figure = figure(
-        title='UMAP projection of the CIFAR10 dataset',
+        title='PaCMAP projection of Incorrectly Predicted CIFAR10 Images',
         # plot_width=600,
         # plot_height=600,
         tools=('pan, wheel_zoom, reset')
@@ -245,7 +245,7 @@ def generate_plots(classes_df, figures_file_path, colours):
     )
 
     scatter_figure1 = figure(
-        title='Average KNN Dist vs. Confidence Difference',
+        title=f'Top1 Confidence Difference vs. Average KNN dist for k={k}',
         # plot_width=600,
         # plot_height=600,
         tools=('pan, wheel_zoom, reset')
@@ -259,7 +259,9 @@ def generate_plots(classes_df, figures_file_path, colours):
         fill_alpha=0.6,
         size=4
     )
-    # lr = LinearRegression
+    scatter_figure1.line(
+        classes_df["k_nearest_avgs"], lr.predict(classes_df["k_nearest_avgs"].to_numpy().reshape(-1,1))
+    )
     output_file(str(figures_file_path), mode='inline')
     show(row(scatter_figure, scatter_figure1))
 
@@ -369,9 +371,15 @@ def main(args):
     classes_df["top10_diff"] = classes_df["top10_diff"].astype(int).astype(str)
 
     classes_df["conf1_idx"] = (classes_df["conf1_raw"] * len(colours)).astype(int).astype(str)
-    classes_df["k_nearest_avgs"] = avg_knn_dist(image_features, top10_diff, k=20)
 
-    generate_plots(classes_df,figures_file_path,colours)
+    k = 100
+    classes_df["k_nearest_avgs"] = avg_knn_dist(image_features, top10_diff, k=k)
+
+    lr = LinearRegression().fit(classes_df["k_nearest_avgs"].to_numpy().reshape(-1,1), classes_df["conf1_raw"].to_numpy())
+    #classes_df["lr_xs"] = [min(classes_df["k_nearest_avgs"]), max(classes_df["k_nearest_avgs"])]
+    #classes_df["lr_ys"] = lr.coef_ * classes_df["lr_xs"] + lr.intercept_
+
+    generate_plots(classes_df,figures_file_path,colours, lr, k=k)
 
 
 if __name__ == "__main__":
